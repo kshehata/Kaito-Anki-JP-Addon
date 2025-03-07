@@ -5,9 +5,6 @@ the defaults.
 *noteTypes*: By default, the add-on considers a note type Japanese if it finds
 the text "japanese" in the note type name. Case is ignored.
 
-*srcFields*: Fields to generate the reading for.
+*srcField*: The field containing the Japanese text. This field will be updated with the reading when the button is clicked.
 
-*dstFields*: Fields where the reading should be placed.
-
-*furiganaSuffix*: If a field called "abc" exists, and another field called "abc
-(furigana)" exists, they will be used as source and destination fields.
+*englishField*: The field containing the English meaning/definition.
