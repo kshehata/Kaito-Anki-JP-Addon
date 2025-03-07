@@ -13,6 +13,14 @@ import subprocess
 import sys
 from typing import Optional
 
+# try to import jamdict from lib folder
+ADDON_PATH = os.path.dirname(os.path.abspath(__file__))
+LIB_PATH = os.path.join(ADDON_PATH, "lib")
+if not os.path.exists(LIB_PATH):
+    os.makedirs(LIB_PATH)
+sys.path.insert(0, LIB_PATH)
+from jamdict import Jamdict
+
 from anki.hooks import addHook
 from anki.notes import Note
 from anki.utils import is_mac, is_win, strip_html
@@ -22,7 +30,8 @@ from aqt.qt import *
 from aqt.utils import showInfo, restoreGeom, saveGeom
 
 from .notetypes import isJapaneseNoteType
-from .lookup import lookup
+
+jdict = Jamdict()
 
 config = mw.addonManager.getConfig(__name__)
 
@@ -330,6 +339,24 @@ def get_reading_for_text(text: str) -> Optional[str]:
         mecab = None
         raise
 
+def get_english_meanings(japanese_word):    
+    # Look up the word
+    result = jdict.lookup(japanese_word)
+    
+    # Extract meanings
+    meanings = []
+    
+    # Process entries from JMdict (Japanese-English dictionary)
+    if result.entries:
+        for entry in result.entries:
+            # Get all senses (meanings)
+            for sense in entry.senses:
+                # Extract English glosses
+                glosses = [gloss.text for gloss in sense.gloss]
+                if glosses:
+                    meanings.append("; ".join(glosses))
+    
+    return "\n".join(meanings)
 
 def on_generate_reading_button(editor: Editor):
     """Handle the generate reading button click."""
@@ -361,7 +388,7 @@ def on_generate_reading_button(editor: Editor):
         return
     
     # Get English text if available
-    english_text = ""
+    english_text = get_english_meanings(src_text)
     
     # Show the dialog
     dialog = ReadingDefinitionDialog(editor.parentWindow, src_text, reading, english_text)
@@ -372,7 +399,6 @@ def on_generate_reading_button(editor: Editor):
             
         editor.loadNote()
         editor.web.setFocus()
-        showInfo(f"Reading added to field '{srcField}'.")
 
 
 def add_reading_button(buttons, editor):

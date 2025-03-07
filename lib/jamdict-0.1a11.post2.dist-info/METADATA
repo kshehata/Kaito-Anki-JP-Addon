@@ -1,0 +1,232 @@
+Metadata-Version: 2.1
+Name: jamdict
+Version: 0.1a11.post2
+Summary: Python library for using Japanese dictionaries and resources (Jim Breen's JMdict, KanjiDic2, KRADFILE, JMnedict)
+Home-page: https://github.com/neocl/jamdict
+Author: Le Tuan Anh
+Author-email: tuananh.ke@gmail.com
+License: MIT License
+Project-URL: Bug Tracker, https://github.com/neocl/jamdict/issues
+Project-URL: Source Code, https://github.com/neocl/jamdict/
+Keywords: dictionary,japanese,kanji,japanese-language,jmdict,japanese-study,kanjidic2,japanese-dictionary,jamdict
+Platform: any
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Development Status :: 3 - Alpha
+Classifier: Natural Language :: Japanese
+Classifier: Natural Language :: English
+Classifier: Environment :: Plugins
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Database
+Classifier: Topic :: Text Processing :: Linguistic
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: chirptext <=0.2,>=0.1
+Requires-Dist: puchikarui <0.3,>=0.1
+
+# Jamdict
+
+[Jamdict](https://github.com/neocl/jamdict) is a Python 3 library for manipulating Jim Breen's JMdict, KanjiDic2, JMnedict and kanji-radical mappings.
+
+[![ReadTheDocs Badge](https://readthedocs.org/projects/jamdict/badge/?version=latest&style=plastic)](https://jamdict.readthedocs.io/)
+
+**Documentation:** https://jamdict.readthedocs.io/ 
+
+# Main features
+
+* Support querying different Japanese language resources
+  - Japanese-English dictionary JMDict
+  - Kanji dictionary KanjiDic2
+  - Kanji-radical and radical-kanji maps KRADFILE/RADKFILE
+  - Japanese Proper Names Dictionary (JMnedict) 
+* Fast look up (dictionaries are stored in SQLite databases)
+* Command-line lookup tool [(Example)](#command-line-tools)
+
+[Contributors](#contributors) are welcome! 🙇. If you want to help, please see [Contributing](https://jamdict.readthedocs.io/en/latest/contributing.html) page.
+
+# Try Jamdict out
+
+Jamdict is used in [Jamdict-web](https://jamdict.herokuapp.com/) - a web-based free and open-source Japanese reading assistant software.
+Please try out the demo instance online at:
+
+https://jamdict.herokuapp.com/
+
+There also is a demo [Jamdict virtual machine](https://replit.com/@tuananhle/jamdict-demo) online for trying out Jamdict Python code on Repl.it:
+
+https://replit.com/@tuananhle/jamdict-demo
+
+# Installation
+
+Jamdict & Jamdict database are both available on [PyPI](https://pypi.org/project/jamdict/) and can be installed using pip
+
+```bash
+pip install --upgrade jamdict jamdict-data
+```
+
+# Sample jamdict Python code
+
+```python
+from jamdict import Jamdict
+jam = Jamdict()
+
+# use wildcard matching to find anything starts with 食べ and ends with る
+result = jam.lookup('食べ%る')
+
+# print all word entries
+for entry in result.entries:
+     print(entry)
+
+# [id#1358280] たべる (食べる) : 1. to eat ((Ichidan verb|transitive verb)) 2. to live on (e.g. a salary)/to live off/to subsist on
+# [id#1358300] たべすぎる (食べ過ぎる) : to overeat ((Ichidan verb|transitive verb))
+# [id#1852290] たべつける (食べ付ける) : to be used to eating ((Ichidan verb|transitive verb))
+# [id#2145280] たべはじめる (食べ始める) : to start eating ((Ichidan verb))
+# [id#2449430] たべかける (食べ掛ける) : to start eating ((Ichidan verb))
+# [id#2671010] たべなれる (食べ慣れる) : to be used to eating/to become used to eating/to be accustomed to eating/to acquire a taste for ((Ichidan verb))
+# [id#2765050] たべられる (食べられる) : 1. to be able to eat ((Ichidan verb|intransitive verb)) 2. to be edible/to be good to eat ((pre-noun adjectival (rentaishi)))
+# [id#2795790] たべくらべる (食べ比べる) : to taste and compare several dishes (or foods) of the same type ((Ichidan verb|transitive verb))
+# [id#2807470] たべあわせる (食べ合わせる) : to eat together (various foods) ((Ichidan verb))
+
+# print all related characters
+for c in result.chars:
+    print(repr(c))
+
+# 食:9:eat,food
+# 喰:12:eat,drink,receive (a blow),(kokuji)
+# 過:12:overdo,exceed,go beyond,error
+# 付:5:adhere,attach,refer to,append
+# 始:8:commence,begin
+# 掛:11:hang,suspend,depend,arrive at,tax,pour
+# 慣:14:accustomed,get used to,become experienced
+# 比:4:compare,race,ratio,Philippines
+# 合:6:fit,suit,join,0.1
+```
+
+## Command line tools
+
+To make sure that jamdict is configured properly, try to look up a word using command line
+
+```bash
+python3 -m jamdict lookup 言語学
+========================================
+Found entries
+========================================
+Entry: 1264430 | Kj:  言語学 | Kn: げんごがく
+--------------------
+1. linguistics ((noun (common) (futsuumeishi)))
+
+========================================
+Found characters
+========================================
+Char: 言 | Strokes: 7
+--------------------
+Readings: yan2, eon, 언, Ngôn, Ngân, ゲン, ゴン, い.う, こと
+Meanings: say, word
+Char: 語 | Strokes: 14
+--------------------
+Readings: yu3, yu4, eo, 어, Ngữ, Ngứ, ゴ, かた.る, かた.らう
+Meanings: word, speech, language
+Char: 学 | Strokes: 8
+--------------------
+Readings: xue2, hag, 학, Học, ガク, まな.ぶ
+Meanings: study, learning, science
+
+No name was found.
+```
+
+## Using KRAD/RADK mapping
+
+Jamdict has built-in support for KRAD/RADK (i.e. kanji-radical and radical-kanji mapping).
+The terminology of radicals/components used by Jamdict can be different from else where.
+
+- A radical in Jamdict is a principal component, each character has only one radical.
+- A character may be decomposed into several writing components.
+
+By default jamdict provides two maps:
+
+- jam.krad is a Python dict that maps characters to list of components.
+- jam.radk is a Python dict that maps each available components to a list of characters.
+
+```python
+# Find all writing components (often called "radicals") of the character 雲
+print(jam.krad['雲'])
+# ['一', '雨', '二', '厶']
+
+# Find all characters with the component 鼎
+chars = jam.radk['鼎']
+print(chars)
+# {'鼏', '鼒', '鼐', '鼎', '鼑'}
+
+# look up the characters info
+result = jam.lookup(''.join(chars))
+for c in result.chars:
+    print(c, c.meanings())
+# 鼏 ['cover of tripod cauldron']
+# 鼒 ['large tripod cauldron with small']
+# 鼐 ['incense tripod']
+# 鼎 ['three legged kettle']
+# 鼑 []
+```
+
+## Finding name entities
+
+```bash
+# Find all names with 鈴木 inside
+result = jam.lookup('%鈴木%')
+for name in result.names:
+    print(name)
+
+# [id#5025685] キューティーすずき (キューティー鈴木) : Kyu-ti- Suzuki (1969.10-) (full name of a particular person)
+# [id#5064867] パパイヤすずき (パパイヤ鈴木) : Papaiya Suzuki (full name of a particular person)
+# [id#5089076] ラジカルすずき (ラジカル鈴木) : Rajikaru Suzuki (full name of a particular person)
+# [id#5259356] きつねざきすずきひなた (狐崎鈴木日向) : Kitsunezakisuzukihinata (place name)
+# [id#5379158] こすずき (小鈴木) : Kosuzuki (family or surname)
+# [id#5398812] かみすずき (上鈴木) : Kamisuzuki (family or surname)
+# [id#5465787] かわすずき (川鈴木) : Kawasuzuki (family or surname)
+# [id#5499409] おおすずき (大鈴木) : Oosuzuki (family or surname)
+# [id#5711308] すすき (鈴木) : Susuki (family or surname)
+# ...
+```
+
+## Exact matching
+
+Use exact matching for faster search.
+
+Find the word 花火 by idseq (1194580)
+
+```python
+>>> result = jam.lookup('id#1194580')
+>>> print(result.names[0])
+[id#1194580] はなび (花火) : fireworks ((noun (common) (futsuumeishi)))
+```
+
+Find an exact name 花火 by idseq (5170462)
+
+```python
+>>> result = jam.lookup('id#5170462')
+>>> print(result.names[0])
+[id#5170462] はなび (花火) : Hanabi (female given name or forename)
+```
+
+See `jamdict_demo.py` and `jamdict/tools.py` for more information.
+
+# Useful links
+
+* JMdict: [http://edrdg.org/jmdict/edict_doc.html](http://edrdg.org/jmdict/edict_doc.html)
+* kanjidic2: [https://www.edrdg.org/wiki/index.php/KANJIDIC_Project](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project)
+* JMnedict: [https://www.edrdg.org/enamdict/enamdict_doc.html](https://www.edrdg.org/enamdict/enamdict_doc.html)
+* KRADFILE: [http://www.edrdg.org/krad/kradinf.html](http://www.edrdg.org/krad/kradinf.html)
+
+# Contributors
+
+- [Le Tuan Anh](https://github.com/letuananh) (Maintainer)
+- [alt-romes](https://github.com/alt-romes)
+- [Matteo Fumagalli](https://github.com/matteofumagalli1275)
+- [Reem Alghamdi](https://github.com/reem-codes)
+- [Techno-coder](https://github.com/Techno-coder) 
