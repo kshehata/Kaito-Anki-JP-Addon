@@ -8,3 +8,5 @@ the text "japanese" in the note type name. Case is ignored.
 *srcField*: The field containing the Japanese text. This field will be updated with the reading when the button is clicked.
 
 *englishField*: The field containing the English meaning/definition.
+
+*chatgpt_mnemonic_image_prompt_template*: Template for generating mnemonic story illustrations. Default is "Illustrate the following story: {story}". The {story} placeholder will be replaced with the mnemonic story text.

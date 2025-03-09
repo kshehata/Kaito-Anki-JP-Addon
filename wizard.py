@@ -52,18 +52,21 @@ from anki.hooks import addHook
 
 def load_image_from_url(url):
     """Load an image from a URL and return a QPixmap."""
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code != 200:
-            print(f"Failed to load image: HTTP {response.status_code}")
-            return None
-        
-        pixmap = QPixmap()
-        pixmap.loadFromData(response.content)
-        return pixmap
-    except Exception as e:
-        print(f"Error loading image: {str(e)}")
-        return None
+    response = requests.get(url, timeout=5)
+    if response.status_code != 200:
+        raise Exception(f"Failed to load image: HTTP {response.status_code}")
+    
+    return response.content
+
+def pixmap_for_image(image):
+    pixmap = QPixmap()
+    pixmap.loadFromData(image)
+    return pixmap
+
+def save_image(image, filename):
+    """Save image to file and get HTML for it."""
+    media_file = mw.col.media.write_data(filename, image)
+    return f"<img src='{media_file}'>"
 
 def search_google_images(search_term):# Helper to search Google Images
     """ Helper to search Google Images for the given term and return a list of image URLs. """
@@ -87,11 +90,11 @@ def search_google_images(search_term):# Helper to search Google Images
         if "items" in data:
             for item in data["items"]:
                 if "link" in item and "image" in item and "thumbnailLink" in item["image"]:
-                    thumbnail = load_image_from_url(item["image"]["thumbnailLink"])
-                    if thumbnail:
+                    image = load_image_from_url(item["image"]["thumbnailLink"])
+                    if image:
                         results.append({
                             "url": item["link"],
-                            "thumbnail": thumbnail.scaled(150, 150),
+                            "thumbnail": pixmap_for_image(image).scaled(150, 150),
                         })
     return results
 
@@ -102,14 +105,15 @@ class VocabWizard(QDialog):
     def __init__(self, parent, japanese_text, reading_text, english_text=""):
         super().__init__(parent)
         self.setWindowTitle("Kaito's Vocab Wizard")
-        self.setMinimumWidth(600)  # Increased width for image display
+        self.setMinimumWidth(800)  # Increased width for image display
         self.japanese_text = japanese_text
         self.reading_text = reading_text
         self.english_text = english_text
         self.current_page = 0
-        self.selected_image_url = None
+        self.prompt_image_data = None
         self.selected_mnemonic_index = None
         self.image_thumbnails = []
+        self.mnemonic_images = {}  # Store mnemonic images by index
         self.setup_ui()
         restoreGeom(self, "readingDefinition")
 
@@ -285,7 +289,7 @@ class VocabWizard(QDialog):
         self.finish_button.setVisible(is_last_page)
         
         # Disable Next button on image page until an image is selected
-        if current == 2 and not self.selected_image_url:  # Image page
+        if current == 2 and not self.prompt_image_data:  # Image page
             self.next_button.setEnabled(False)
     
     def open_jisho(self):
@@ -330,7 +334,7 @@ class VocabWizard(QDialog):
         self.clear_image_grid()
         self.image_thumbnails = []
         # Reset selected image URL
-        self.selected_image_url = None
+        self.prompt_image_data = None
         
         # Show loading indicator
         loading_label = QLabel("Searching for images...")
@@ -366,8 +370,8 @@ class VocabWizard(QDialog):
                     # Use CSS to indicate clickability
                     image_label.setStyleSheet("border: 1px solid #dddddd; padding: 2px; background-color: #f8f8f8;")
                     
-                    # Store the URL as a property on the label
-                    image_label.url = image_data["url"]
+                    # Store the image data as a property on the label
+                    image_label.data = image_data
                     
                     # Connect click event to select_image using a helper method
                     image_label.clicked.connect(self.on_image_clicked)
@@ -395,11 +399,11 @@ class VocabWizard(QDialog):
             import traceback
             print(traceback.format_exc())
 
-    def select_image(self, url):
+    def select_image(self, image_data):
         """Handle image selection."""
         # Store the selected URL
-        self.selected_image_url = url
-        
+        self.prompt_image_data = image_data
+
         # Find and highlight the selected image
         for i in range(self.image_grid.count()):
             item = self.image_grid.itemAt(i)
@@ -412,7 +416,7 @@ class VocabWizard(QDialog):
                     if child and child.widget() and isinstance(child.widget(), ClickableLabel):
                         label = child.widget()
                         # Check if this is the selected image
-                        if hasattr(label, 'url') and label.url == url:
+                        if hasattr(label, 'data') and label.data["url"] == image_data["url"]:
                             # Highlight this image
                             label.setStyleSheet("border: 3px solid #4CAF50; padding: 2px; background-color: #f0f0f0;")
                             # Add a small checkmark overlay
@@ -464,9 +468,16 @@ class VocabWizard(QDialog):
         """Get the edited definition text."""
         return self.definition_display.toPlainText()
     
-    def get_selected_image_url(self):
+    def get_prompt_html(self):
         """Get the selected image URL."""
-        return self.selected_image_url
+        if not self.prompt_image_data:
+            return None
+
+        image = self.prompt_image_data.get("image", None)
+        if not image:
+            image = load_image_from_url(self.prompt_image_data["url"])
+        
+        return save_image(image, f"kaito_{self.japanese_text}.jpg")
 
     def closeEvent(self, event):
         saveGeom(self, "readingDefinition")
@@ -476,8 +487,8 @@ class VocabWizard(QDialog):
         """Helper method to handle image clicks."""
         # Get the sender (the clicked label)
         sender = self.sender()
-        if hasattr(sender, 'url'):
-            self.select_image(sender.url)
+        if hasattr(sender, 'data'):
+            self.select_image(sender.data)
 
     def generate_mnemonics(self):
         """Generate mnemonic stories using ChatGPT."""
@@ -506,6 +517,51 @@ class VocabWizard(QDialog):
             if widget:
                 widget.deleteLater()
     
+    def generate_mnemonic_image(self, index, story):
+        """Generate an illustration for a mnemonic story using ChatGPT."""
+        # Get the prompt template from config
+        prompt_template = config.get("chatgpt_mnemonic_image_prompt_template", 
+                                   "Illustrate the following story: {story}")
+        prompt = prompt_template.format(story=story)
+        
+        # Generate image in background
+        self.simple_background_query(
+            lambda _: generate_chatgpt_image(prompt),
+            lambda result: self.update_mnemonic_image(index, result)
+        )
+
+    def update_mnemonic_image(self, index, image_data):
+        """Update the mnemonic story's illustration."""
+        if not image_data:
+            return
+        
+        # Store the image data
+        self.mnemonic_images[index] = image_data
+        
+        # Update the display
+        container = self.mnemonic_list.itemAt(index).widget()
+        image_container = container.findChild(QWidget, f"image_container_{index}")
+        if image_container:
+            # Clear existing widgets
+            while image_container.layout().count():
+                item = image_container.layout().takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            
+            # Create image label
+            image_label = QLabel()
+            image_label.setFixedSize(200, 200)
+            image_label.setScaledContents(True)
+            image_label.setPixmap(image_data["thumbnail"])
+            
+            # Create regenerate button
+            regen_button = QPushButton("Regenerate Illustration")
+            regen_button.clicked.connect(lambda: self.generate_mnemonic_image(index, self.mnemonic_editors[index].toPlainText()))
+            
+            # Add to layout
+            image_container.layout().addWidget(image_label)
+            image_container.layout().addWidget(regen_button)
+
     def display_mnemonics(self, mnemonics):
         """Display the generated mnemonics in the list."""
         self.clear_mnemonic_list()
@@ -549,8 +605,21 @@ class VocabWizard(QDialog):
             container_layout.addWidget(radio)
             container_layout.addWidget(text_edit, 1)  # Give the text a stretch factor of 1
             
+            # Create right side container for image
+            image_container = QWidget()
+            image_container.setObjectName(f"image_container_{i}")
+            image_layout = QVBoxLayout()
+            image_container.setLayout(image_layout)
+            # Show loading indicator
+            loading_label = QLabel("Generating illustration...")
+            image_container.layout().addWidget(loading_label)
+            container_layout.addWidget(image_container)
+            
             # Add to list
             self.mnemonic_list.addWidget(container)
+            
+            # Generate initial image
+            self.generate_mnemonic_image(i, mnemonic)
         
         # Connect the button group's buttonClicked signal to handle selection
         self.mnemonic_button_group.buttonClicked.connect(
@@ -578,11 +647,18 @@ class VocabWizard(QDialog):
         self.next_button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 10px;")
     
     def get_selected_mnemonic(self):
-        """Get the selected mnemonic text."""
-        if self.selected_mnemonic_index is not None:
-            # Return the current text from the selected editor
-            return self.mnemonic_editors[self.selected_mnemonic_index].toPlainText()
-        return None
+        """Get the selected mnemonic text and its illustration."""
+        if self.selected_mnemonic_index is None:
+            return None
+        
+        # Get the current text from the selected editor
+        text = self.mnemonic_editors[self.selected_mnemonic_index].toPlainText()
+        if self.mnemonic_images.get(self.selected_mnemonic_index, None):
+            text += "\n\n" + save_image(self.mnemonic_images[
+                self.selected_mnemonic_index]["image"],
+                f"kaito_mnemonic_{self.japanese_text}.jpg")
+                
+        return text
 
 def get_english_meanings(japanese_word):    
     # Look up the word
@@ -647,23 +723,12 @@ def on_generate_reading_button(editor: Editor):
             note[mnemonicField] = selected_mnemonic
         
         # Add the selected image if available
-        selected_image_url = dialog.get_selected_image_url()
-        if selected_image_url and imageField in note:
-            # Download the image and add it to the media collection
-            try:
-                print(f"Attempting to download image from: {selected_image_url}")
-                response = requests.get(selected_image_url)
-                if response.status_code == 200:
-                    # Generate a filename based on the Japanese text
-                    filename = f"kaito_{src_text}.jpg"
-                    # Save to Anki media folder
-                    media_file = mw.col.media.write_data(filename, response.content)
-                    # Add to note
-                    note[imageField] = f'<img src="{media_file}">'
-                else:
-                    showInfo(f"Failed to download image. Status code: {response.status_code}")
-            except Exception as e:
-                showInfo(f"Error adding image: {str(e)}")
+        try:
+            prompt_html = dialog.get_prompt_html()
+            if prompt_html and imageField in note:
+                note[imageField] = prompt_html
+        except Exception as e:
+            showInfo(f"Error adding image prompt: {str(e)}")
             
         editor.loadNote()
         editor.web.setFocus()
@@ -705,10 +770,13 @@ def generate_chatgpt_prompt_image(japanese_text, english_text):
 def generate_chatgpt_image(prompt):
     """Helper to generate an image using ChatGPT for the given prompt."""
     api_key = config.get("openai_api_key")
-    print("API Key: " + api_key)
     if not api_key:
         return None
     
+    # print("Shortcutting image generation")
+    # url = "https://files.oaiusercontent.com/file-JA1s3hdSFoBs9TSoF5hm1d?se=2025-03-09T10%3A01%3A41Z&sp=r&sv=2024-08-04&sr=b&rscc=max-age%3D604800%2C%20immutable%2C%20private&rscd=attachment%3B%20filename%3Ddd5bc415-0348-465b-8170-a9126235c22a.webp&sig=lRo5nv0qkp6zIWAdVAfNh8AMsv32inKJtAd%2BAzOf1a8%3D"
+    # image = load_image_from_url(url)
+
     response = requests.post(
         "https://api.openai.com/v1/images/generations",
         headers={
@@ -731,10 +799,12 @@ def generate_chatgpt_image(prompt):
     data = response.json()
     if "data" not in data or len(data["data"]) < 1:
         return None
-    
+    image = load_image_from_url(data["data"][0]["url"])
+
     return {
         "url": data["data"][0]["url"],
-        "thumbnail": load_image_from_url(data["data"][0]["url"]),
+        "thumbnail": pixmap_for_image(image).scaled(150, 150),
+        "image": image,
         "source": "ChatGPT",
         "title": "AI Generated Image"
     }
@@ -749,8 +819,9 @@ def generate_chatgpt_mnemonics(japanese_text, reading, english_text):
                                "Write a short (< 100 words) story as a mnemonic for remembering the Japanese word '{japanese_text}' (pronounced '{reading}') meaning '{english_text}'. Write 4 such stories, each separated by 2 new lines. Make the stories short and memorable, connecting the pronunciation to the meaning.")
     
     prompt = prompt_template.format(japanese_text=japanese_text, reading=reading, english_text=english_text)
-    print("ChatGPT Mnemonics Prompt: " + prompt)
+    # print("ChatGPT Mnemonics Prompt: " + prompt)
 
+    # return ['**Story 1:**  \nIn a small town, a little girl named Iku had a fluffy puppy named Nuno. Every morning, Iku would call out, "Inu, come here!" as she played with her dog in the sunny garden. The cheerful bark of Nuno echoed, reminding everyone that "inu" means dog.', '**Story 2:**  \nOne day, a funny dog named Inu decided to join a race. As he sprinted past the finish line, the crowd shouted, “I knew he would win!” Inu wagged his tail, proving that dogs can be champions.', '**Story 3:**  \nIn a magical forest, the wise owl told a story about a brave dog named Inu who saved the day. "Inu," he said, "is the hero of our tale," making the forest animals cheer for their beloved dog.', '**Story 4:**  \nAt a festival, a clown performed tricks with his pet dog named Inu. As the clown juggled, he exclaimed, “I knew Inu would steal the show!” The audience laughed, forever associating Inu with the joyful spirit of dogs.']
     response = requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={
