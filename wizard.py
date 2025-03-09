@@ -17,6 +17,19 @@ from aqt.utils import showInfo, restoreGeom, saveGeom
 from .notetypes import isJapaneseNoteType
 from .reading import get_reading_for_text
 
+# Custom clickable label class
+class ClickableLabel(QLabel):
+    """A QLabel that emits a clicked signal when clicked."""
+    clicked = pyqtSignal()
+    
+    def __init__(self, parent=None):
+        super(ClickableLabel, self).__init__(parent)
+        self.url = ""
+    
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+        super().mousePressEvent(event)
+
 config = mw.addonManager.getConfig(__name__)
 
 srcField = config["srcField"]
@@ -176,6 +189,8 @@ class ReadingDefinitionDialog(QDialog):
             # If moving to the image page, search for images
             if self.stack.currentIndex() == 2:  # Image page
                 self.search_images()
+                # Disable Next button until an image is selected
+                self.next_button.setEnabled(False)
     
     def go_back(self):
         """Move to the previous page in the wizard."""
@@ -194,6 +209,10 @@ class ReadingDefinitionDialog(QDialog):
         self.next_button.setVisible(not is_last_page)
         self.finish_button.setVisible(is_last_page)
         
+        # Disable Next button on image page until an image is selected
+        if current == 2 and not self.selected_image_url:  # Image page
+            self.next_button.setEnabled(False)
+    
     def open_jisho(self):
         """Open Jisho.org to look up the Japanese text."""
         url = f"https://jisho.org/search/{self.japanese_text}"
@@ -300,28 +319,29 @@ class ReadingDefinitionDialog(QDialog):
                     container_layout = QVBoxLayout()
                     container.setLayout(container_layout)
                     
-                    # Create label for image
-                    image_label = QLabel()
-                    # Don't set alignment - it's causing issues
+                    # Create clickable label for image
+                    image_label = ClickableLabel()
                     image_label.setFixedSize(150, 150)
                     image_label.setScaledContents(True)
+                    # Use CSS to indicate clickability
+                    image_label.setStyleSheet("border: 1px solid #dddddd; padding: 2px; background-color: #f8f8f8;")
+                    
+                    # Store the URL as a property on the label
+                    image_label.url = image_data["url"]
+                    
+                    # Connect click event to select_image using a helper method
+                    image_label.clicked.connect(self.on_image_clicked)
                     
                     # Load image from URL
                     pixmap = self.load_image_from_url(image_data["thumbnail"])
                     if pixmap:
-                        # Just scale the pixmap without transformation flags
                         image_label.setPixmap(pixmap.scaled(150, 150))
                     else:
                         image_label.setText("Failed to load")
                         image_label.setStyleSheet("color: red;")
                     
-                    # Create select button
-                    select_button = QPushButton("Select")
-                    select_button.clicked.connect(partial(self.select_image, image_data["url"]))
-                    
-                    # Add to container
+                    # Add to container - no caption label
                     container_layout.addWidget(image_label)
-                    container_layout.addWidget(select_button)
                     
                     # Add to grid (2x5 grid)
                     row = i // 5
@@ -355,27 +375,64 @@ class ReadingDefinitionDialog(QDialog):
     
     def select_image(self, url):
         """Handle image selection."""
+        # Store the selected URL
         self.selected_image_url = url
         
-        # Add visual feedback for selection
-        status_label = QLabel(f"✓ Image selected")
-        status_label.setStyleSheet("color: green; font-weight: bold;")
-        
-        # Clear any existing status messages
+        # Find and highlight the selected image
         for i in range(self.image_grid.count()):
             item = self.image_grid.itemAt(i)
-            if item and item.widget() and isinstance(item.widget(), QLabel) and item.widget().text().startswith("✓"):
+            if item and item.widget():
+                # Check if this is a container widget
+                container = item.widget()
+                # Look for the ClickableLabel in the container
+                for j in range(container.layout().count()):
+                    child = container.layout().itemAt(j)
+                    if child and child.widget() and isinstance(child.widget(), ClickableLabel):
+                        label = child.widget()
+                        # Check if this is the selected image
+                        if hasattr(label, 'url') and label.url == url:
+                            # Highlight this image
+                            label.setStyleSheet("border: 3px solid #4CAF50; padding: 2px; background-color: #f0f0f0;")
+                            # Add a small checkmark overlay
+                            if not hasattr(label, 'checkmark'):
+                                checkmark = QLabel("✓", label)
+                                checkmark.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 10px; padding: 2px;")
+                                checkmark.setFixedSize(20, 20)
+                                checkmark.move(5, 5)  # Position in top-left corner
+                                checkmark.show()
+                                label.checkmark = checkmark
+                        else:
+                            # Reset other images
+                            label.setStyleSheet("border: 1px solid #dddddd; padding: 2px; background-color: #f8f8f8;")
+                            # Remove checkmark if exists
+                            if hasattr(label, 'checkmark'):
+                                label.checkmark.deleteLater()
+                                delattr(label, 'checkmark')
+        
+        # Enable the Next button now that an image is selected
+        self.next_button.setEnabled(True)
+        # Make the Next button more prominent
+        self.next_button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 10px;")
+        
+        # Add a small status message at the bottom
+        status_layout = QHBoxLayout()
+        status_widget = QWidget()
+        status_widget.setLayout(status_layout)
+        
+        status_label = QLabel("✓ Image selected - Click 'Next' to continue")
+        status_label.setStyleSheet("color: green; font-weight: bold;")
+        status_layout.addWidget(status_label)
+        
+        # Find if there's already a status message
+        for i in range(self.image_grid.count()):
+            item = self.image_grid.itemAt(i)
+            if item and item.widget() and hasattr(item.widget(), 'isStatusWidget') and item.widget().isStatusWidget:
                 item.widget().deleteLater()
         
-        # Add the status message at the top - without alignment parameter
-        self.image_grid.addWidget(status_label, 0, 0, 1, 5)
-        
-        # Enable the finish button to allow completing the wizard
-        self.finish_button.setEnabled(True)
-        
-        # Optional: scroll to top to show the confirmation
-        if hasattr(self.image_grid.parentWidget().parentWidget(), "verticalScrollBar"):
-            self.image_grid.parentWidget().parentWidget().verticalScrollBar().setValue(0)
+        # Add the status widget at the bottom
+        rows = (self.image_grid.count() // 5) + 1  # Calculate number of rows
+        status_widget.isStatusWidget = True  # Mark this widget as a status widget
+        self.image_grid.addWidget(status_widget, rows, 0, 1, 5)
     
     def get_reading(self):
         """Get the edited reading text."""
@@ -392,6 +449,13 @@ class ReadingDefinitionDialog(QDialog):
     def closeEvent(self, event):
         saveGeom(self, "readingDefinition")
         super().closeEvent(event)
+
+    def on_image_clicked(self):
+        """Helper method to handle image clicks."""
+        # Get the sender (the clicked label)
+        sender = self.sender()
+        if hasattr(sender, 'url'):
+            self.select_image(sender.url)
 
 def get_english_meanings(japanese_word):    
     # Look up the word

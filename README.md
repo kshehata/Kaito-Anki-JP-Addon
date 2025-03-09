@@ -39,9 +39,11 @@ If you don't configure the Google API, the addon will open Google Images in your
 2. Enter Japanese text in the source field
 3. Click the "Kaito's Japanese Magic" button in the editor toolbar
 4. The wizard will guide you through:
-   - Confirming the reading
-   - Editing the definition
-   - Selecting an image for the word
+   - Confirming the reading and clicking "Next"
+   - Editing the definition and clicking "Next"
+   - Selecting an image by clicking on it (the selected image will be highlighted)
+   - Clicking "Next" to continue after selecting an image
+   - Clicking "Finish" on the final screen to add everything to your card
 
 ## Requirements
 
@@ -71,6 +73,7 @@ If you don't configure the Google API, the addon will open Google Images in your
 - **"QFrame has no attribute Box/StyledPanel"**: This is a PyQt version compatibility issue. The latest version of the addon uses a simpler approach without frame styles.
 - **"type object 'Qt' has no attribute 'AlignCenter'"**: Another PyQt version compatibility issue. The latest version avoids using Qt alignment constants.
 - **"setAlignment(self, a0: Qt.AlignmentFlag): argument 1 has unexpected type 'int'"**: PyQt version compatibility issue. The latest version avoids setting alignment flags.
+- **"QCursor(): argument 1 has unexpected type 'int'"**: PyQt version compatibility issue with cursor types. The latest version uses CSS styling instead of cursor changes.
 - **"API Error: ..."**: This indicates an issue with your Google API configuration. The specific error message should provide more details.
 - **"Error searching for images: ..."**: Check your internet connection and try again. If the problem persists, check the Anki error log for more details.
 
