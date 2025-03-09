@@ -36,7 +36,7 @@ config = mw.addonManager.getConfig(__name__)
 srcField = config["srcField"]
 englishField = config["englishField"]
 imageField = config.get("imageField", "Image")  # Add default image field
-
+mnemonicField = config.get("mnemonicField", "Mnemonic")  # Add default mnemonic field
 supportDir = os.path.join(os.path.dirname(__file__), "support")
 
 # try to import jamdict from lib folder
@@ -619,8 +619,8 @@ def on_generate_reading_button(editor: Editor):
         
         # Add the selected mnemonic if available
         selected_mnemonic = dialog.get_selected_mnemonic()
-        if selected_mnemonic and "Mnemonic" in note:
-            note["Mnemonic"] = selected_mnemonic
+        if selected_mnemonic and mnemonicField in note:
+            note[mnemonicField] = selected_mnemonic
         
         # Add the selected image if available
         selected_image_url = dialog.get_selected_image_url()
@@ -717,7 +717,10 @@ def generate_chatgpt_mnemonics(japanese_text, reading, english_text):
     if not api_key:
         return []
     
-    prompt = f"Write a short (< 100 words) story as a mnemonic for remembering the Japanese word '{japanese_text}' (pronounced '{reading}') meaning '{english_text}'. Write 4 such stories, each separated by 2 new lines. Make the stories short and memorable, connecting the pronunciation to the meaning."
+    prompt_template = config.get("chatgpt_mnemonics_prompt_template", 
+                               "Write a short (< 100 words) story as a mnemonic for remembering the Japanese word '{japanese_text}' (pronounced '{reading}') meaning '{english_text}'. Write 4 such stories, each separated by 2 new lines. Make the stories short and memorable, connecting the pronunciation to the meaning.")
+    
+    prompt = prompt_template.format(japanese_text=japanese_text, reading=reading, english_text=english_text)
     print("ChatGPT Mnemonics Prompt: " + prompt)
 
     response = requests.post(
