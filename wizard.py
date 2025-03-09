@@ -50,6 +50,21 @@ jdict = Jamdict()
 
 from anki.hooks import addHook
 
+def load_image_from_url(url):
+    """Load an image from a URL and return a QPixmap."""
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code != 200:
+            print(f"Failed to load image: HTTP {response.status_code}")
+            return None
+        
+        pixmap = QPixmap()
+        pixmap.loadFromData(response.content)
+        return pixmap
+    except Exception as e:
+        print(f"Error loading image: {str(e)}")
+        return None
+
 def search_google_images(search_term):# Helper to search Google Images
     """ Helper to search Google Images for the given term and return a list of image URLs. """
     print("Searching for images: " + search_term)
@@ -72,10 +87,12 @@ def search_google_images(search_term):# Helper to search Google Images
         if "items" in data:
             for item in data["items"]:
                 if "link" in item and "image" in item and "thumbnailLink" in item["image"]:
-                    results.append({
-                        "url": item["link"],
-                        "thumbnail": item["image"]["thumbnailLink"],
-                    })
+                    thumbnail = load_image_from_url(item["image"]["thumbnailLink"])
+                    if thumbnail:
+                        results.append({
+                            "url": item["link"],
+                            "thumbnail": thumbnail.scaled(150, 150),
+                        })
     return results
 
 # Reading/Definition Dialog
@@ -239,14 +256,24 @@ class VocabWizard(QDialog):
         url = f"https://jisho.org/search/{self.japanese_text}"
         QDesktopServices.openUrl(QUrl(url))
 
+    def add_chatgpt_image(self, image_data):
+        """Add the ChatGPT-generated image to the image grid."""
+        if not image_data:
+            return
+        
+        # Insert the ChatGPT image at the beginning of the list
+        self.image_thumbnails.insert(0, image_data)
+        
+        # Display all images including the new ChatGPT one
+        self.clear_image_grid()
+        self.display_images()
+
     def add_prompt_images(self, images):
         """Add images to the prompt images list."""
-        print("Adding prompt images: " + str(len(images)))
         if len(self.image_thumbnails) < 1:
             self.image_thumbnails = images
         else:
             self.image_thumbnails = [val for pair in zip(self.image_thumbnails, images) for val in pair]
-        print("Image thumbnails: " + str(self.image_thumbnails))
         self.clear_image_grid()
         self.display_images()
 
@@ -260,6 +287,13 @@ class VocabWizard(QDialog):
         loading_label = QLabel("Searching for images...")
         self.image_grid.addWidget(loading_label, 0, 0)
         QApplication.processEvents()
+
+        chatgpt_op = QueryOp(
+            parent=mw,
+            op=lambda col: generate_chatgpt_image(self.japanese_text, self.english_text),
+            success=self.add_chatgpt_image,
+        )
+        chatgpt_op.without_collection().run_in_background()
 
         jp_op = QueryOp(
             # the active window (main window in this case)
@@ -310,14 +344,9 @@ class VocabWizard(QDialog):
                     # Connect click event to select_image using a helper method
                     image_label.clicked.connect(self.on_image_clicked)
                     
-                    # Load image from URL
-                    pixmap = self.load_image_from_url(image_data["thumbnail"])
-                    if pixmap:
-                        image_label.setPixmap(pixmap.scaled(150, 150))
-                    else:
-                        image_label.setText("Failed to load")
-                        image_label.setStyleSheet("color: red;")
-                    
+                    # Load image from URL 
+                    image_label.setPixmap(image_data["thumbnail"])
+
                     # Add to container
                     container_layout.addWidget(image_label)
                     
@@ -337,22 +366,7 @@ class VocabWizard(QDialog):
             print(f"Error in display_images: {str(e)}")
             import traceback
             print(traceback.format_exc())
-    
-    def load_image_from_url(self, url):
-        """Load an image from a URL and return a QPixmap."""
-        try:
-            response = requests.get(url, timeout=5)
-            if response.status_code != 200:
-                print(f"Failed to load image: HTTP {response.status_code}")
-                return None
-            
-            pixmap = QPixmap()
-            pixmap.loadFromData(response.content)
-            return pixmap
-        except Exception as e:
-            print(f"Error loading image: {str(e)}")
-            return None
-    
+
     def select_image(self, url):
         """Handle image selection."""
         # Store the selected URL
@@ -480,7 +494,6 @@ def on_generate_reading_button(editor: Editor):
     
     # Get the reading
     reading = get_reading_for_text(src_text)
-    print("Got reading: " + reading)
     if not reading:
         showInfo(f"Could not generate reading for text in '{srcField}'.")
         return
@@ -531,3 +544,46 @@ def add_reading_button(buttons, editor):
         "Kaito's Japanese Magic")]
 
 addHook("setupEditorButtons", add_reading_button)
+
+def generate_chatgpt_image(japanese_text, english_text):
+    """Generate an image using ChatGPT based on the Japanese and English text."""
+    api_key = config.get("openai_api_key")
+    print("API Key: " + api_key)
+    if not api_key:
+        return None
+    
+    prompt_template = config.get("chatgpt_image_prompt_template", 
+                               "Create a simple, clear illustration to represent'{japanese}' meaning '{english}'. The image should be minimalist and educational.")
+    
+    prompt = prompt_template.format(japanese=japanese_text, english=english_text)
+    print("ChatGPT Prompt: " + prompt)
+    response = requests.post(
+        "https://api.openai.com/v1/images/generations",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        },
+        json={
+            "model": "dall-e-3",
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024"
+        },
+        timeout=30
+    )
+
+    print("ChatGPT Response: " + str(response.json()))
+    
+    if response.status_code != 200:
+        raise Exception("Failed to generate image with ChatGPT: " + str(response.json()))
+    
+    data = response.json()
+    if "data" not in data or len(data["data"]) < 1:
+        return None
+    
+    return {
+        "url": data["data"][0]["url"],
+        "thumbnail": load_image_from_url(data["data"][0]["url"]),
+        "source": "ChatGPT",
+        "title": "AI Generated Image"
+    }
