@@ -336,7 +336,7 @@ class VocabWizard(QDialog):
         loading_label = QLabel("Searching for images...")
         self.image_grid.addWidget(loading_label, 0, 0)
 
-        self.simple_background_query(lambda _: generate_chatgpt_image(self.japanese_text, self.english_text), self.add_chatgpt_image)
+        self.simple_background_query(lambda _: generate_chatgpt_prompt_image(self.japanese_text, self.english_text), self.add_chatgpt_image)
         self.simple_background_query(lambda _: search_google_images(self.japanese_text), self.add_prompt_images)
         self.simple_background_query(lambda _: search_google_images(self.english_text), self.add_prompt_images)
 
@@ -686,19 +686,13 @@ def add_reading_button(buttons, editor):
 
 addHook("setupEditorButtons", add_reading_button)
 
-def generate_chatgpt_image(japanese_text, english_text):
+def generate_chatgpt_prompt_image(japanese_text, english_text):
     """Generate an image using ChatGPT based on the Japanese and English text."""
-    api_key = config.get("openai_api_key")
-    print("API Key: " + api_key)
-    if not api_key:
-        return None
-    
     prompt_template = config.get("chatgpt_image_prompt_template", 
                                "Create a simple, clear illustration to represent'{japanese}' meaning '{english}'. The image should be minimalist and educational.")
-    
     prompt = prompt_template.format(japanese=japanese_text, english=english_text)
-    print("ChatGPT Prompt: " + prompt)
-
+    print("ChatGPT Prompt Image Prompt: " + prompt)
+    return generate_chatgpt_image(prompt)
     # print("Shortcutting ChatGPT")
     # url = 'https://oaidalleapiprodscus.blob.core.windows.net/private/org-gKiTH4bzIh5r71w1xXJo1Exi/user-pdf8FzTUpzng0o5c2LriNjgZ/img-GXGaApbaUCxVmD4QonHGWdXM.png?st=2025-03-09T05%3A48%3A15Z&se=2025-03-09T07%3A48%3A15Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=d505667d-d6c1-4a0a-bac7-5c84a87759f8&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-03-08T22%3A05%3A50Z&ske=2025-03-09T22%3A05%3A50Z&sks=b&skv=2024-08-04&sig=vnvJo1l%2BFNrapSjii5Wwqwqvi/r%2BPsn9qdtRKlaFvMA%3D'
     # return {
@@ -707,6 +701,14 @@ def generate_chatgpt_image(japanese_text, english_text):
     #     "source": "ChatGPT",
     #     "title": "AI Generated Image"
     # }
+
+def generate_chatgpt_image(prompt):
+    """Helper to generate an image using ChatGPT for the given prompt."""
+    api_key = config.get("openai_api_key")
+    print("API Key: " + api_key)
+    if not api_key:
+        return None
+    
     response = requests.post(
         "https://api.openai.com/v1/images/generations",
         headers={
@@ -722,8 +724,7 @@ def generate_chatgpt_image(japanese_text, english_text):
         timeout=30
     )
 
-    print("ChatGPT Response: " + str(response.json()))
-    
+    # print("ChatGPT Response: " + str(response.json()))
     if response.status_code != 200:
         raise Exception("Failed to generate image with ChatGPT: " + str(response.json()))
     
