@@ -87,24 +87,7 @@ class ReadingDefinitionDialog(QDialog):
         self.reading_display.setPlainText(self.reading_text)
         self.reading_display.setStyleSheet("font-size: 16px;")
         
-        # Add a button to look up on Jisho
-        jisho_button = QPushButton("Look up on Jisho.org")
-        jisho_button.clicked.connect(self.open_jisho)
-        
-        # Add to layout
-        reading_layout.addWidget(japanese_label)
-        reading_layout.addWidget(self.japanese_display)
-        reading_layout.addWidget(reading_label)
-        reading_layout.addWidget(self.reading_display)
-        reading_layout.addWidget(jisho_button)
-        
-        self.reading_page.setLayout(reading_layout)
-        
-        # Create second page (definition page)
-        self.definition_page = QWidget()
-        definition_layout = QVBoxLayout()
-        
-        # Definition - now editable
+        # Definition - now on first page
         definition_label = QLabel("Definition:")
         self.definition_display = QTextEdit()
         
@@ -114,12 +97,22 @@ class ReadingDefinitionDialog(QDialog):
             # Provide a hint for the user
             self.definition_display.setPlaceholderText("Enter definition here or look up on Jisho.org")
         
-        definition_layout.addWidget(definition_label)
-        definition_layout.addWidget(self.definition_display)
+        # Add a button to look up on Jisho
+        jisho_button = QPushButton("Look up on Jisho.org")
+        jisho_button.clicked.connect(self.open_jisho)
         
-        self.definition_page.setLayout(definition_layout)
+        # Add to layout
+        reading_layout.addWidget(japanese_label)
+        reading_layout.addWidget(self.japanese_display)
+        reading_layout.addWidget(reading_label)
+        reading_layout.addWidget(self.reading_display)
+        reading_layout.addWidget(definition_label)
+        reading_layout.addWidget(self.definition_display)
+        reading_layout.addWidget(jisho_button)
         
-        # Create third page (image selection page)
+        self.reading_page.setLayout(reading_layout)
+        
+        # Create image selection page (now the second page)
         self.image_page = QWidget()
         image_layout = QVBoxLayout()
         
@@ -148,7 +141,6 @@ class ReadingDefinitionDialog(QDialog):
         
         # Add pages to stack
         self.stack.addWidget(self.reading_page)
-        self.stack.addWidget(self.definition_page)
         self.stack.addWidget(self.image_page)
         
         # Navigation buttons
@@ -187,7 +179,7 @@ class ReadingDefinitionDialog(QDialog):
             self.update_buttons()
             
             # If moving to the image page, search for images
-            if self.stack.currentIndex() == 2:  # Image page
+            if self.stack.currentIndex() == 1:  # Image page
                 self.search_images()
                 # Disable Next button until an image is selected
                 self.next_button.setEnabled(False)
@@ -210,7 +202,7 @@ class ReadingDefinitionDialog(QDialog):
         self.finish_button.setVisible(is_last_page)
         
         # Disable Next button on image page until an image is selected
-        if current == 2 and not self.selected_image_url:  # Image page
+        if current == 1 and not self.selected_image_url:  # Image page
             self.next_button.setEnabled(False)
     
     def open_jisho(self):
