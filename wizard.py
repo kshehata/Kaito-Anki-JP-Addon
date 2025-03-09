@@ -11,6 +11,7 @@ from functools import partial
 from anki.notes import Note
 from aqt import mw
 from aqt.editor import Editor
+from aqt.operations import QueryOp
 from aqt.qt import *
 from aqt.utils import showInfo, restoreGeom, saveGeom
 
@@ -49,13 +50,41 @@ jdict = Jamdict()
 
 from anki.hooks import addHook
 
+def search_google_images(search_term):# Helper to search Google Images
+    """ Helper to search Google Images for the given term and return a list of image URLs. """
+    print("Searching for images: " + search_term)
+    results = []
+    search_term = urllib.parse.quote(search_term)
+    
+    # Check API configuration
+    api_key = config.get("google_api_key", "")
+    cx = config.get("google_cx", "")
+    
+    if not api_key or not cx:
+        raise Exception("Google API key not configured.")
+
+    # Make API request for Japanese term
+    url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cx}&q={search_term}&searchType=image&num=10"
+    response = requests.get(url, timeout=10)
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "items" in data:
+            for item in data["items"]:
+                if "link" in item and "image" in item and "thumbnailLink" in item["image"]:
+                    results.append({
+                        "url": item["link"],
+                        "thumbnail": item["image"]["thumbnailLink"],
+                    })
+    return results
+
 # Reading/Definition Dialog
 ##########################################################################
 
-class ReadingDefinitionDialog(QDialog):
+class VocabWizard(QDialog):
     def __init__(self, parent, japanese_text, reading_text, english_text=""):
         super().__init__(parent)
-        self.setWindowTitle("Japanese Reading Wizard")
+        self.setWindowTitle("Kaito's Vocab Wizard")
         self.setMinimumWidth(600)  # Increased width for image display
         self.japanese_text = japanese_text
         self.reading_text = reading_text
@@ -209,9 +238,20 @@ class ReadingDefinitionDialog(QDialog):
         """Open Jisho.org to look up the Japanese text."""
         url = f"https://jisho.org/search/{self.japanese_text}"
         QDesktopServices.openUrl(QUrl(url))
-    
+
+    def add_prompt_images(self, images):
+        """Add images to the prompt images list."""
+        print("Adding prompt images: " + str(len(images)))
+        if len(self.image_thumbnails) < 1:
+            self.image_thumbnails = images
+        else:
+            self.image_thumbnails = [val for pair in zip(self.image_thumbnails, images) for val in pair]
+        print("Image thumbnails: " + str(self.image_thumbnails))
+        self.clear_image_grid()
+        self.display_images()
+
     def search_images(self):
-        """Search Google Images for the Japanese text and display results."""
+        """Search Google Images for both Japanese text and English meaning, and display results alternating between the two."""
         # Clear previous images
         self.clear_image_grid()
         self.image_thumbnails = []
@@ -220,78 +260,24 @@ class ReadingDefinitionDialog(QDialog):
         loading_label = QLabel("Searching for images...")
         self.image_grid.addWidget(loading_label, 0, 0)
         QApplication.processEvents()
+
+        jp_op = QueryOp(
+            # the active window (main window in this case)
+            parent=mw,
+            # the operation is passed the collection for convenience; you can
+            # ignore it if you wish
+            op=lambda col: search_google_images(self.japanese_text),
+            success=self.add_prompt_images,
+        )
+        jp_op.without_collection().run_in_background()
         
-        try:
-            # Get search term
-            search_term = urllib.parse.quote(self.japanese_text)
-            
-            # Check API configuration
-            api_key = config.get("google_api_key", "")
-            cx = config.get("google_cx", "")
-            
-            if not api_key or not cx:
-                # Show message and open browser
-                self.clear_image_grid()
-                msg = QLabel("API key not configured. Opening Google Images in browser.")
-                self.image_grid.addWidget(msg, 0, 0)
-                
-                # Open browser
-                url = f"https://www.google.com/search?q={search_term}&tbm=isch"
-                QDesktopServices.openUrl(QUrl(url))
-                return
-            
-            # Make API request
-            url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cx}&q={search_term}&searchType=image&num=10"
-            response = requests.get(url, timeout=10)
-            
-            # Check response status
-            if response.status_code != 200:
-                self.clear_image_grid()
-                error = QLabel(f"API Error: HTTP {response.status_code}")
-                self.image_grid.addWidget(error, 0, 0)
-                return
-            
-            # Parse JSON response
-            data = response.json()
-            
-            # Check for API errors
-            if "error" in data:
-                self.clear_image_grid()
-                error = QLabel(f"API Error: {data['error'].get('message', 'Unknown error')}")
-                self.image_grid.addWidget(error, 0, 0)
-                return
-            
-            # Extract image data
-            if "items" in data:
-                for item in data["items"]:
-                    if "link" in item and "image" in item and "thumbnailLink" in item["image"]:
-                        self.image_thumbnails.append({
-                            "url": item["link"],
-                            "thumbnail": item["image"]["thumbnailLink"]
-                        })
-            
-            # Clear loading and display results
-            self.clear_image_grid()
-            
-            if self.image_thumbnails:
-                self.display_images()
-            else:
-                msg = QLabel("No images found. Try a different search term.")
-                self.image_grid.addWidget(msg, 0, 0)
-            
-        except requests.exceptions.RequestException as e:
-            self.clear_image_grid()
-            error = QLabel(f"Network error: {str(e)}")
-            self.image_grid.addWidget(error, 0, 0)
-            print(f"Network error: {str(e)}")
-        except Exception as e:
-            self.clear_image_grid()
-            error = QLabel(f"Error: {str(e)}")
-            self.image_grid.addWidget(error, 0, 0)
-            print(f"Error searching for images: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
-    
+        en_op = QueryOp(
+            parent=mw,
+            op=lambda col: search_google_images(self.english_text),
+            success=self.add_prompt_images,
+        )
+        en_op.without_collection().run_in_background()
+
     def clear_image_grid(self):
         """Clear all widgets from the image grid."""
         while self.image_grid.count():
@@ -332,7 +318,7 @@ class ReadingDefinitionDialog(QDialog):
                         image_label.setText("Failed to load")
                         image_label.setStyleSheet("color: red;")
                     
-                    # Add to container - no caption label
+                    # Add to container
                     container_layout.addWidget(image_label)
                     
                     # Add to grid (2x5 grid)
@@ -341,6 +327,8 @@ class ReadingDefinitionDialog(QDialog):
                     self.image_grid.addWidget(container, row, col)
                 except Exception as e:
                     print(f"Error displaying image {i}: {str(e)}")
+                    import traceback
+                    print(traceback.format_exc())
                     # Continue with next image
         except Exception as e:
             self.clear_image_grid()
@@ -501,7 +489,7 @@ def on_generate_reading_button(editor: Editor):
     english_text = get_english_meanings(src_text)
     
     # Show the dialog
-    dialog = ReadingDefinitionDialog(editor.parentWindow, src_text, reading, english_text)
+    dialog = VocabWizard(editor.parentWindow, src_text, reading, english_text)
     if dialog.exec():
         # User clicked OK - update the source field with the edited reading
         note[srcField] = dialog.get_reading()
