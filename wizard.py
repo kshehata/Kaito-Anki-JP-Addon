@@ -108,7 +108,7 @@ class VocabWizard(QDialog):
         self.english_text = english_text
         self.current_page = 0
         self.selected_image_url = None
-        self.selected_mnemonic = None
+        self.selected_mnemonic_index = None
         self.image_thumbnails = []
         self.setup_ui()
         restoreGeom(self, "readingDefinition")
@@ -518,9 +518,13 @@ class VocabWizard(QDialog):
         # Create a button group to ensure only one radio button can be selected
         self.mnemonic_button_group = QButtonGroup(self)
         
+        # Store references to the text editors
+        self.mnemonic_editors = []
+        
         for i, mnemonic in enumerate(mnemonics):
             # Create a container for each mnemonic
             container = QFrame()
+            container.setObjectName(f"mnemonic_container_{i}")  # Set object name for styling
             container.setStyleSheet("border: 1px solid #cccccc; border-radius: 5px; padding: 10px; margin: 5px;")
             container_layout = QHBoxLayout()
             container.setLayout(container_layout)
@@ -532,26 +536,41 @@ class VocabWizard(QDialog):
             self.mnemonic_button_group.addButton(radio)
             self.mnemonic_button_group.setId(radio, i)
             
-            # Create text display for the mnemonic
-            text = QLabel(mnemonic)
-            text.setWordWrap(True)
-            text.setStyleSheet("padding: 5px;")
+            # Create editable text area for the mnemonic
+            text_edit = QTextEdit()
+            text_edit.setPlainText(mnemonic)
+            text_edit.setStyleSheet("padding: 5px;")
+            text_edit.setMinimumHeight(80)  # Set a minimum height for better editing
+            
+            # Store reference to the editor
+            self.mnemonic_editors.append(text_edit)
             
             # Add to container
             container_layout.addWidget(radio)
-            container_layout.addWidget(text, 1)  # Give the text a stretch factor of 1
+            container_layout.addWidget(text_edit, 1)  # Give the text a stretch factor of 1
             
             # Add to list
             self.mnemonic_list.addWidget(container)
         
         # Connect the button group's buttonClicked signal to handle selection
         self.mnemonic_button_group.buttonClicked.connect(
-            lambda button: self.select_mnemonic(mnemonics[self.mnemonic_button_group.id(button)])
+            lambda button: self.select_mnemonic(self.mnemonic_button_group.id(button))
         )
     
-    def select_mnemonic(self, mnemonic):
+    def select_mnemonic(self, index):
         """Handle mnemonic selection."""
-        self.selected_mnemonic = mnemonic
+        # Store the index of the selected mnemonic
+        self.selected_mnemonic_index = index
+        
+        # Update visual feedback for the selected mnemonic
+        for i, editor in enumerate(self.mnemonic_editors):
+            container = self.mnemonic_list.itemAt(i).widget()
+            if i == index:
+                # Highlight the selected container
+                container.setStyleSheet("border: 2px solid #4CAF50; border-radius: 5px; padding: 10px; margin: 5px; background-color: #f0f8f0;")
+            else:
+                # Reset other containers
+                container.setStyleSheet("border: 1px solid #cccccc; border-radius: 5px; padding: 10px; margin: 5px;")
         
         # Enable the Next button now that a mnemonic is selected
         self.next_button.setEnabled(True)
@@ -560,7 +579,10 @@ class VocabWizard(QDialog):
     
     def get_selected_mnemonic(self):
         """Get the selected mnemonic text."""
-        return self.selected_mnemonic
+        if self.selected_mnemonic_index is not None:
+            # Return the current text from the selected editor
+            return self.mnemonic_editors[self.selected_mnemonic_index].toPlainText()
+        return None
 
 def get_english_meanings(japanese_word):    
     # Look up the word
