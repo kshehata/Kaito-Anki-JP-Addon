@@ -329,6 +329,8 @@ class VocabWizard(QDialog):
         # Clear previous images
         self.clear_image_grid()
         self.image_thumbnails = []
+        # Reset selected image URL
+        self.selected_image_url = None
         
         # Show loading indicator
         loading_label = QLabel("Searching for images...")
@@ -627,6 +629,7 @@ def on_generate_reading_button(editor: Editor):
         if selected_image_url and imageField in note:
             # Download the image and add it to the media collection
             try:
+                print(f"Attempting to download image from: {selected_image_url}")
                 response = requests.get(selected_image_url)
                 if response.status_code == 200:
                     # Generate a filename based on the Japanese text
@@ -635,6 +638,8 @@ def on_generate_reading_button(editor: Editor):
                     media_file = mw.col.media.write_data(filename, response.content)
                     # Add to note
                     note[imageField] = f'<img src="{media_file}">'
+                else:
+                    showInfo(f"Failed to download image. Status code: {response.status_code}")
             except Exception as e:
                 showInfo(f"Error adding image: {str(e)}")
             
