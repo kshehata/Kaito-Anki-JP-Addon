@@ -108,6 +108,7 @@ class VocabWizard(QDialog):
         self.english_text = english_text
         self.current_page = 0
         self.selected_image_url = None
+        self.selected_mnemonic = None
         self.image_thumbnails = []
         self.setup_ui()
         restoreGeom(self, "readingDefinition")
@@ -158,7 +159,34 @@ class VocabWizard(QDialog):
         
         self.reading_page.setLayout(reading_layout)
         
-        # Create image selection page (now the second page)
+        # Create mnemonic page (new second page)
+        self.mnemonic_page = QWidget()
+        mnemonic_layout = QVBoxLayout()
+        
+        # Mnemonic selection instructions
+        mnemonic_label = QLabel(f"Select a mnemonic story for '{self.japanese_text}':")
+        mnemonic_layout.addWidget(mnemonic_label)
+        
+        # Create a vertical layout for mnemonic stories
+        self.mnemonic_list = QVBoxLayout()
+        
+        # Create a scroll area for the mnemonic list
+        mnemonic_scroll_area = QScrollArea()
+        mnemonic_scroll_area.setWidgetResizable(True)
+        mnemonic_scroll_content = QWidget()
+        mnemonic_scroll_content.setLayout(self.mnemonic_list)
+        mnemonic_scroll_area.setWidget(mnemonic_scroll_content)
+        
+        mnemonic_layout.addWidget(mnemonic_scroll_area)
+        
+        # Add a refresh button to generate new mnemonics
+        refresh_mnemonic_button = QPushButton("Generate New Mnemonics")
+        refresh_mnemonic_button.clicked.connect(self.generate_mnemonics)
+        mnemonic_layout.addWidget(refresh_mnemonic_button)
+        
+        self.mnemonic_page.setLayout(mnemonic_layout)
+        
+        # Create image selection page (now the third page)
         self.image_page = QWidget()
         image_layout = QVBoxLayout()
         
@@ -187,6 +215,7 @@ class VocabWizard(QDialog):
         
         # Add pages to stack
         self.stack.addWidget(self.reading_page)
+        self.stack.addWidget(self.mnemonic_page)
         self.stack.addWidget(self.image_page)
         
         # Navigation buttons
@@ -224,10 +253,16 @@ class VocabWizard(QDialog):
             self.stack.setCurrentIndex(current + 1)
             self.update_buttons()
             
-            # If moving to the image page, search for images
-            if self.stack.currentIndex() == 1:  # Image page
+            # If moving to the mnemonic page, generate mnemonics
+            if self.stack.currentIndex() == 1:  # Mnemonic page
                 # Update the english text
                 self.english_text = self.definition_display.toPlainText()
+                self.generate_mnemonics()
+                # Disable Next button until a mnemonic is selected
+                self.next_button.setEnabled(False)
+            
+            # If moving to the image page, search for images
+            elif self.stack.currentIndex() == 2:  # Image page
                 self.search_images()
                 # Disable Next button until an image is selected
                 self.next_button.setEnabled(False)
@@ -250,7 +285,7 @@ class VocabWizard(QDialog):
         self.finish_button.setVisible(is_last_page)
         
         # Disable Next button on image page until an image is selected
-        if current == 1 and not self.selected_image_url:  # Image page
+        if current == 2 and not self.selected_image_url:  # Image page
             self.next_button.setEnabled(False)
     
     def open_jisho(self):
@@ -442,6 +477,89 @@ class VocabWizard(QDialog):
         if hasattr(sender, 'url'):
             self.select_image(sender.url)
 
+    def generate_mnemonics(self):
+        """Generate mnemonic stories using ChatGPT."""
+        # Clear previous mnemonics
+        self.clear_mnemonic_list()
+        
+        # Show loading indicator
+        loading_label = QLabel("Generating mnemonics...")
+        self.mnemonic_list.addWidget(loading_label)
+        
+        # Get the current reading and definition
+        reading = self.reading_display.toPlainText()
+        definition = self.definition_display.toPlainText()
+        
+        # Run the query in the background
+        self.simple_background_query(
+            lambda _: generate_chatgpt_mnemonics(self.japanese_text, reading, definition),
+            self.display_mnemonics
+        )
+    
+    def clear_mnemonic_list(self):
+        """Clear all widgets from the mnemonic list."""
+        while self.mnemonic_list.count():
+            item = self.mnemonic_list.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+    
+    def display_mnemonics(self, mnemonics):
+        """Display the generated mnemonics in the list."""
+        self.clear_mnemonic_list()
+        
+        if not mnemonics or len(mnemonics) == 0:
+            error_label = QLabel("Failed to generate mnemonics. Please try again.")
+            self.mnemonic_list.addWidget(error_label)
+            return
+        
+        # Create a button group to ensure only one radio button can be selected
+        self.mnemonic_button_group = QButtonGroup(self)
+        
+        for i, mnemonic in enumerate(mnemonics):
+            # Create a container for each mnemonic
+            container = QFrame()
+            container.setStyleSheet("border: 1px solid #cccccc; border-radius: 5px; padding: 10px; margin: 5px;")
+            container_layout = QHBoxLayout()
+            container.setLayout(container_layout)
+            
+            # Create radio button for selection (no text label)
+            radio = QRadioButton()
+            
+            # Add the radio button to the button group
+            self.mnemonic_button_group.addButton(radio)
+            self.mnemonic_button_group.setId(radio, i)
+            
+            # Create text display for the mnemonic
+            text = QLabel(mnemonic)
+            text.setWordWrap(True)
+            text.setStyleSheet("padding: 5px;")
+            
+            # Add to container
+            container_layout.addWidget(radio)
+            container_layout.addWidget(text, 1)  # Give the text a stretch factor of 1
+            
+            # Add to list
+            self.mnemonic_list.addWidget(container)
+        
+        # Connect the button group's buttonClicked signal to handle selection
+        self.mnemonic_button_group.buttonClicked.connect(
+            lambda button: self.select_mnemonic(mnemonics[self.mnemonic_button_group.id(button)])
+        )
+    
+    def select_mnemonic(self, mnemonic):
+        """Handle mnemonic selection."""
+        self.selected_mnemonic = mnemonic
+        
+        # Enable the Next button now that a mnemonic is selected
+        self.next_button.setEnabled(True)
+        # Make the Next button more prominent
+        self.next_button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 5px 10px;")
+    
+    def get_selected_mnemonic(self):
+        """Get the selected mnemonic text."""
+        return self.selected_mnemonic
+
 def get_english_meanings(japanese_word):    
     # Look up the word
     result = jdict.lookup(japanese_word)
@@ -498,6 +616,11 @@ def on_generate_reading_button(editor: Editor):
         # User clicked OK - update the source field with the edited reading
         note[srcField] = dialog.get_reading()
         note[englishField] = dialog.get_definition()
+        
+        # Add the selected mnemonic if available
+        selected_mnemonic = dialog.get_selected_mnemonic()
+        if selected_mnemonic and "Mnemonic" in note:
+            note["Mnemonic"] = selected_mnemonic
         
         # Add the selected image if available
         selected_image_url = dialog.get_selected_image_url()
@@ -587,3 +710,47 @@ def generate_chatgpt_image(japanese_text, english_text):
         "source": "ChatGPT",
         "title": "AI Generated Image"
     }
+
+def generate_chatgpt_mnemonics(japanese_text, reading, english_text):
+    """Generate mnemonic stories using ChatGPT."""
+    api_key = config.get("openai_api_key")
+    if not api_key:
+        return []
+    
+    prompt = f"Write a short (< 100 words) story as a mnemonic for remembering the Japanese word '{japanese_text}' (pronounced '{reading}') meaning '{english_text}'. Write 4 such stories, each separated by 2 new lines. Make the stories short and memorable, connecting the pronunciation to the meaning."
+    print("ChatGPT Mnemonics Prompt: " + prompt)
+
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        },
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant that creates memorable mnemonics for language learning."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7
+        },
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception("Failed to generate mnemonics with ChatGPT: " + str(response.json()))
+    
+    print("ChatGPT Mnemonics Response: " + str(response.json()))
+
+    data = response.json()
+    if "choices" not in data or len(data["choices"]) < 1:
+        return []
+    
+    # Extract the content from the response
+    content = data["choices"][0]["message"]["content"]
+    
+    # Split the content by double newlines to get individual stories
+    stories = [story.strip() for story in content.split("\n\n") 
+              if story.strip() and len(story.strip()) >= 10]
+    print("Stories: " + str(stories))
+    return stories
