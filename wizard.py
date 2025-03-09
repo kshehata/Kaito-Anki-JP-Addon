@@ -226,6 +226,8 @@ class VocabWizard(QDialog):
             
             # If moving to the image page, search for images
             if self.stack.currentIndex() == 1:  # Image page
+                # Update the english text
+                self.english_text = self.definition_display.toPlainText()
                 self.search_images()
                 # Disable Next button until an image is selected
                 self.next_button.setEnabled(False)
@@ -260,7 +262,7 @@ class VocabWizard(QDialog):
         """Add the ChatGPT-generated image to the image grid."""
         if not image_data:
             return
-        
+
         # Insert the ChatGPT image at the beginning of the list
         self.image_thumbnails.insert(0, image_data)
         
@@ -277,6 +279,16 @@ class VocabWizard(QDialog):
         self.clear_image_grid()
         self.display_images()
 
+    def simple_background_query(self, fn, success):
+        """Run an operation in the background and call a success callback with the result."""
+        op = QueryOp(
+            parent=self,
+            op=fn,
+            success=success,
+        )
+        op.without_collection().run_in_background()
+        
+
     def search_images(self):
         """Search Google Images for both Japanese text and English meaning, and display results alternating between the two."""
         # Clear previous images
@@ -286,31 +298,10 @@ class VocabWizard(QDialog):
         # Show loading indicator
         loading_label = QLabel("Searching for images...")
         self.image_grid.addWidget(loading_label, 0, 0)
-        QApplication.processEvents()
 
-        chatgpt_op = QueryOp(
-            parent=mw,
-            op=lambda col: generate_chatgpt_image(self.japanese_text, self.english_text),
-            success=self.add_chatgpt_image,
-        )
-        chatgpt_op.without_collection().run_in_background()
-
-        jp_op = QueryOp(
-            # the active window (main window in this case)
-            parent=mw,
-            # the operation is passed the collection for convenience; you can
-            # ignore it if you wish
-            op=lambda col: search_google_images(self.japanese_text),
-            success=self.add_prompt_images,
-        )
-        jp_op.without_collection().run_in_background()
-        
-        en_op = QueryOp(
-            parent=mw,
-            op=lambda col: search_google_images(self.english_text),
-            success=self.add_prompt_images,
-        )
-        en_op.without_collection().run_in_background()
+        self.simple_background_query(lambda _: generate_chatgpt_image(self.japanese_text, self.english_text), self.add_chatgpt_image)
+        self.simple_background_query(lambda _: search_google_images(self.japanese_text), self.add_prompt_images)
+        self.simple_background_query(lambda _: search_google_images(self.english_text), self.add_prompt_images)
 
     def clear_image_grid(self):
         """Clear all widgets from the image grid."""
@@ -557,6 +548,15 @@ def generate_chatgpt_image(japanese_text, english_text):
     
     prompt = prompt_template.format(japanese=japanese_text, english=english_text)
     print("ChatGPT Prompt: " + prompt)
+
+    # print("Shortcutting ChatGPT")
+    # url = 'https://oaidalleapiprodscus.blob.core.windows.net/private/org-gKiTH4bzIh5r71w1xXJo1Exi/user-pdf8FzTUpzng0o5c2LriNjgZ/img-GXGaApbaUCxVmD4QonHGWdXM.png?st=2025-03-09T05%3A48%3A15Z&se=2025-03-09T07%3A48%3A15Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=d505667d-d6c1-4a0a-bac7-5c84a87759f8&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-03-08T22%3A05%3A50Z&ske=2025-03-09T22%3A05%3A50Z&sks=b&skv=2024-08-04&sig=vnvJo1l%2BFNrapSjii5Wwqwqvi/r%2BPsn9qdtRKlaFvMA%3D'
+    # return {
+    #     "url": url,
+    #     "thumbnail": load_image_from_url(url),
+    #     "source": "ChatGPT",
+    #     "title": "AI Generated Image"
+    # }
     response = requests.post(
         "https://api.openai.com/v1/images/generations",
         headers={
