@@ -2,4 +2,4 @@
 # Copyright: Ankitects Pty Ltd and contributors
 # License: GNU GPL, version 3 or later; http://www.gnu.org/copyleft/gpl.html
 
-from . import model, reading, stats, wizard
+from . import model, reading, stats, wizard, quick_actions
