@@ -92,7 +92,11 @@ class WaniKaniAPI:
                 },
                 "meanings": [],
                 "level": kanji_data["data"].get("level"),
-                "component_subject_ids": kanji_data["data"].get("component_subject_ids", [])
+                "component_subject_ids": kanji_data["data"].get("component_subject_ids", []),
+                "meaning_mnemonic": kanji_data["data"].get("meaning_mnemonic"),
+                "meaning_hint": kanji_data["data"].get("meaning_hint"),
+                "reading_mnemonic": kanji_data["data"].get("reading_mnemonic"),
+                "reading_hint": kanji_data["data"].get("reading_hint")
             }
             
             # Extract readings
